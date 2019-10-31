@@ -1,0 +1,79 @@
+version: '3.4'
+ 
+services:
+  master:
+#    image: pavanpkulkarni/spark_image:2.2.1
+    image: brian1025/videotranscoder:3.0.2
+    hostname: master
+    ports:
+      - "4040:4040"
+      - "7077:7077"
+      - "8080:8080"
+      - "6066:6066"
+    networks:
+      - spark-network
+    environment:
+      - INIT_DAEMON_STEP=setup_spark
+      - "constraint:node==spark-master"
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    command: ["/usr/bin/supervisord", "--configuration=/opt/conf/master.conf"]
+    volumes:
+      - "spark_v:/opt/output"
+#      - "./docker-volume/spark-events:/opt/spark-events"
+
+  worker:
+#    image: pavanpkulkarni/spark_image:2.2.1
+    image: brian1025/videotranscoder:3.0.2
+    depends_on:
+      - master
+    ports:
+      - "8081:8081"
+    networks:
+      - spark-network
+    environment:
+      - "SPARK_MASTER=spark://spark-master:6066"
+      - "constraint:node==spark-master"
+    command: ["/usr/bin/supervisord", "--configuration=/opt/conf/slave.conf"]
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+    volumes:
+      - "spark_v:/opt/output"
+#      - "./docker-volume/spark-events/:/opt/spark-events"
+
+  history-server:
+#      image: pavanpkulkarni/spark_image:2.2.1
+      image: brian1025/videotranscoder:3.0.2
+      hostname: history-server
+      depends_on:
+        - master
+      ports:
+        - "18080:18080"
+      networks:
+        - spark-network
+      command: ["/usr/bin/supervisord", "--configuration=/opt/conf/history-server.conf"]
+#      volumes:
+#        - "./docker-volume/spark-events:/opt/spark-events"
+
+  visualizer:
+      image: dockersamples/visualizer:stable
+      ports:
+        - "7070:8080"
+      volumes:
+        - "/var/run/docker.sock:/var/run/docker.sock"
+      networks:
+        - spark-network
+      deploy:
+        placement:
+          constraints: [node.role == manager]
+
+networks:
+  spark-network:
+    driver: overlay
+
+volumes:
+  spark_v:
